@@ -1,31 +1,26 @@
-import fs from "node:fs";
-import path from "node:path";
+// Backward-compatibility wrapper delegating to SQLite repositories
+import { getJobs, getProfile, updateProfile, insertJob, updateJob } from "./db/repositories.js";
 import type { Job, Profile } from "./types.js";
 
-const dataDir = path.resolve("data");
-const jobsPath = path.join(dataDir, "jobs.json");
-const profilePath = path.join(dataDir, "profile.json");
+export function readJobs(): Job[] {
+  return getJobs();
+}
 
-function ensure() {
-  fs.mkdirSync(dataDir, { recursive: true });
-  if (!fs.existsSync(jobsPath)) fs.writeFileSync(jobsPath, "[]", "utf8");
-  if (!fs.existsSync(profilePath)) {
-    const starter: Profile = {
-      fullName: "Your Full Name",
-      email: "",
-      phone: "",
-      location: "Bangladesh",
-      linkedin: "",
-      github: "",
-      cvText: "",
-      preferredRoles: ["Manual QA", "Junior SQA Engineer", "Software Tester", "QA Analyst"],
-      keywords: ["manual testing", "test cases", "bug reporting", "Jira", "API testing", "Postman", "regression testing", "smoke testing"],
-      minimumMatchScore: 35
-    };
-    fs.writeFileSync(profilePath, JSON.stringify(starter, null, 2), "utf8");
+export function writeJobs(jobs: Job[]): void {
+  // When legacy code passes an array of jobs, ensure each job is inserted or updated in SQLite
+  for (const job of jobs) {
+    try {
+      insertJob(job);
+    } catch {
+      updateJob(job.id, job);
+    }
   }
 }
-export function readJobs(): Job[] { ensure(); return JSON.parse(fs.readFileSync(jobsPath, "utf8")) as Job[]; }
-export function writeJobs(jobs: Job[]) { ensure(); fs.writeFileSync(jobsPath, JSON.stringify(jobs, null, 2), "utf8"); }
-export function readProfile(): Profile { ensure(); return JSON.parse(fs.readFileSync(profilePath, "utf8")) as Profile; }
-export function writeProfile(profile: Profile) { ensure(); fs.writeFileSync(profilePath, JSON.stringify(profile, null, 2), "utf8"); }
+
+export function readProfile(): Profile {
+  return getProfile();
+}
+
+export function writeProfile(profile: Profile): void {
+  updateProfile(profile);
+}

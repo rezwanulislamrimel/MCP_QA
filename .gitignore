@@ -1,7 +1,29 @@
+# Dependencies
 node_modules/
+
+# Compilation outputs
 dist/
+
+# Local sensitive environment variables and tokens
 .env
+.env.*
+!.env.example
+
+# Local SQLite databases, encryption keys, and generated documents
 data/
+data/*
+!data/.gitkeep
+
+# Uploaded CV files and attachments
 uploads/
+uploads/*
+!uploads/.gitkeep
+
+# Generated exports and logs
 artifacts/
+logs/
 *.log
+
+# OS metadata
+.DS_Store
+Thumbs.db
