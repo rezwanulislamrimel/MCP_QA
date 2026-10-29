@@ -636,13 +636,13 @@ export function renderProfilePage(profile: Profile, message?: string): string {
 
 // ==================== CV LIBRARY PAGE ====================
 
-export function renderCvLibraryPage(files: CVFile[], previewData?: any): string {
+export function renderCvLibraryPage(files: CVFile[], previewData?: any, notice?: string): string {
   const previewSection = previewData ? `
     <div class="card" style="border: 2px solid #3b82f6; background: #f8fafc;">
       <div class="card-title" style="color: #1d4ed8;">Review Extracted CV Data Before Saving</div>
       <p class="muted" style="margin-bottom: 16px;">
         We parsed the following information from <strong>${esc(previewData.originalName)}</strong>.
-        Please review and confirm below. No information will be invented or modified without your review.
+        Please review and edit any field below. Click <strong>Confirm &amp; Update Profile</strong> to save this as your active built-in profile.
       </p>
 
       <form method="post" action="/cv-library/confirm">
@@ -667,13 +667,27 @@ export function renderCvLibraryPage(files: CVFile[], previewData?: any): string 
             <input type="text" name="location" value="${esc(previewData.extracted.location || "")}">
           </div>
         </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>LinkedIn URL</label>
+            <input type="url" name="linkedin" value="${esc(previewData.extracted.linkedin || "")}">
+          </div>
+          <div class="form-group">
+            <label>GitHub URL</label>
+            <input type="url" name="github" value="${esc(previewData.extracted.github || "")}">
+          </div>
+        </div>
         <div class="form-group">
-          <label>Extracted Skills (Review and edit)</label>
+          <label>Target QA Roles (Comma separated)</label>
+          <input type="text" name="preferredRoles" value="${esc((previewData.extracted.preferredRoles || []).join(", "))}">
+        </div>
+        <div class="form-group">
+          <label>Extracted Skills (Review, add, or edit)</label>
           <input type="text" name="keywords" value="${esc((previewData.extracted.keywords || []).join(", "))}">
         </div>
         <div class="form-group">
-          <label>Extracted Full Text</label>
-          <textarea name="cvText" rows="8">${esc(previewData.extracted.cvText || "")}</textarea>
+          <label>Extracted Full CV Text (Saved built-in)</label>
+          <textarea name="cvText" rows="10">${esc(previewData.extracted.cvText || "")}</textarea>
         </div>
         <button class="btn btn-primary" type="submit">Confirm &amp; Update Profile with Extracted Data</button>
       </form>
@@ -681,22 +695,25 @@ export function renderCvLibraryPage(files: CVFile[], previewData?: any): string 
   ` : "";
 
   return baseLayout("CV Library", `
+    ${notice ? `<div class="alert alert-success"><span>${esc(notice)}</span></div>` : ""}
     ${previewSection}
 
     <div class="card">
-      <div class="card-title">Upload Existing CV (PDF or DOCX)</div>
+      <div class="card-title">Upload New CV (PDF or DOCX)</div>
       <p class="muted" style="margin-bottom: 16px;">
-        Upload your authentic CV in <strong>PDF (.pdf)</strong> or <strong>Word (.docx)</strong> format.
-        Our system will extract your actual experience, education, skills, and contact details for your review before saving.
+        Upload your CV in <strong>PDF (.pdf)</strong> or <strong>Word (.docx)</strong> format.
+        You can keep multiple CVs in your library (e.g. for Manual QA, Automation QA, or updated versions)
+        and switch your active profile between them at any time.
       </p>
       <form method="post" action="/cv-library/upload" enctype="multipart/form-data" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
         <input type="file" name="cvFile" accept=".pdf,.docx,.txt" required style="max-width: 380px;">
-        <button class="btn btn-primary" type="submit">Extract &amp; Review CV</button>
+        <button class="btn btn-primary" type="submit">Upload &amp; Extract CV Details</button>
       </form>
     </div>
 
     <div class="card">
-      <div class="card-title">Uploaded CV Files</div>
+      <div class="card-title">CV Library (Stored Built-in CVs)</div>
+      <p class="muted" style="margin-bottom: 14px;">All your uploaded CVs are saved locally. You can view them, delete them, or set any of them as your active profile.</p>
       ${files.length === 0 ? `<p class="muted">No CV files uploaded yet.</p>` : `
         <table>
           <thead>
@@ -715,9 +732,13 @@ export function renderCvLibraryPage(files: CVFile[], previewData?: any): string 
                 <td><span class="badge badge-neutral">${esc(f.mimeType.split("/")[1] || "doc")}</span></td>
                 <td>${(f.size / 1024).toFixed(1)} KB</td>
                 <td>${new Date(f.uploadedAt).toLocaleString()}</td>
-                <td>
+                <td style="white-space: nowrap;">
+                  <form method="post" action="/cv-library/${esc(f.id)}/activate" style="display:inline">
+                    <button class="btn btn-primary btn-sm" title="Populate your active profile with this CV's details">⚡ Set as Active Profile</button>
+                  </form>
+                  <a class="btn btn-secondary btn-sm" href="/cv-library/${esc(f.id)}/view">View Text</a>
                   <form method="post" action="/cv-library/${esc(f.id)}/delete" style="display:inline">
-                    <button class="btn btn-danger btn-sm" onclick="return confirm('Delete this CV file?')">Delete</button>
+                    <button class="btn btn-danger btn-sm" onclick="return confirm('Delete this CV from your library?')">Delete</button>
                   </form>
                 </td>
               </tr>
@@ -725,6 +746,25 @@ export function renderCvLibraryPage(files: CVFile[], previewData?: any): string 
           </tbody>
         </table>
       `}
+    </div>
+  `, "cv-library");
+}
+
+export function renderCvViewPage(file: CVFile): string {
+  return baseLayout(`View CV: ${file.originalName}`, `
+    <div style="margin-bottom: 16px;">
+      <a href="/cv-library" class="muted">← Back to CV Library</a>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span>${esc(file.originalName)}</span>
+        <form method="post" action="/cv-library/${esc(file.id)}/activate" style="display:inline">
+          <button class="btn btn-primary btn-sm">⚡ Set as Active Profile</button>
+        </form>
+      </div>
+      <p class="muted" style="margin-bottom: 14px;">Uploaded on ${new Date(file.uploadedAt).toLocaleString()} (${(file.size / 1024).toFixed(1)} KB)</p>
+      <pre style="background: #f8fafc; color: #0f172a; border: 1px solid var(--border); max-height: 500px; overflow-y: auto;">${esc(file.parsedText)}</pre>
     </div>
   `, "cv-library");
 }

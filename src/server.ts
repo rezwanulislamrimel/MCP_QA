@@ -46,6 +46,7 @@ import {
   renderJobMatchesPage,
   renderProfilePage,
   renderCvLibraryPage,
+  renderCvViewPage,
   renderDraftsPage,
   renderEmailAccountsPage,
   renderHistoryPage,
@@ -306,9 +307,10 @@ app.post("/profile", (req, res) => {
 
 // ==================== CV LIBRARY & EXTRACTION ROUTES ====================
 
-app.get("/cv-library", (_req, res) => {
+app.get("/cv-library", (req, res) => {
   const files = getCVFiles();
-  res.send(renderCvLibraryPage(files));
+  const notice = req.query.notice ? String(req.query.notice) : undefined;
+  res.send(renderCvLibraryPage(files, undefined, notice));
 });
 
 app.post("/cv-library/upload", upload.single("cvFile"), async (req, res) => {
@@ -345,22 +347,69 @@ app.post("/cv-library/confirm", (req, res) => {
     const email = String(req.body.email || "").trim();
     const phone = String(req.body.phone || "").trim();
     const location = String(req.body.location || "").trim();
+    const linkedin = String(req.body.linkedin || "").trim();
+    const github = String(req.body.github || "").trim();
+    const preferredRoles = String(req.body.preferredRoles || "").split(",").map(s => s.trim()).filter(Boolean);
     const keywords = String(req.body.keywords || "").split(",").map(s => s.trim()).filter(Boolean);
     const cvText = String(req.body.cvText || "").trim();
+
+    // Re-parse structured sections from confirmed cvText so experiences/education/projects are saved
+    const parsed = parseCvTextToProfile(cvText);
 
     updateProfile({
       fullName: fullName || undefined,
       email: email || undefined,
       phone: phone || undefined,
       location: location || undefined,
+      linkedin: linkedin || undefined,
+      github: github || undefined,
+      preferredRoles: preferredRoles.length > 0 ? preferredRoles : undefined,
       keywords: keywords.length > 0 ? keywords : undefined,
-      cvText: cvText || undefined
+      cvText: cvText || undefined,
+      experiences: parsed.extractedProfile.experiences?.length ? parsed.extractedProfile.experiences : undefined,
+      education: parsed.extractedProfile.education?.length ? parsed.extractedProfile.education : undefined,
+      projects: parsed.extractedProfile.projects?.length ? parsed.extractedProfile.projects : undefined
     });
 
     res.redirect("/profile");
   } catch (err) {
     res.status(400).send(`Error updating profile: ${String(err)}`);
   }
+});
+
+app.post("/cv-library/:id/activate", (req, res) => {
+  try {
+    const file = getCVFileById(req.params.id);
+    if (!file) return res.status(404).send("CV file not found");
+
+    const parsed = parseCvTextToProfile(file.parsedText);
+    const p = parsed.extractedProfile;
+
+    updateProfile({
+      fullName: p.fullName || undefined,
+      email: p.email || undefined,
+      phone: p.phone || undefined,
+      location: p.location || undefined,
+      linkedin: p.linkedin || undefined,
+      github: p.github || undefined,
+      preferredRoles: p.preferredRoles?.length ? p.preferredRoles : undefined,
+      keywords: p.keywords?.length ? p.keywords : undefined,
+      cvText: file.parsedText,
+      experiences: p.experiences,
+      education: p.education,
+      projects: p.projects
+    });
+
+    res.redirect(`/cv-library?notice=${encodeURIComponent(`Active profile successfully populated from ${file.originalName}!`)}`);
+  } catch (err) {
+    res.status(400).send(`Error activating CV: ${String(err)}`);
+  }
+});
+
+app.get("/cv-library/:id/view", (req, res) => {
+  const file = getCVFileById(req.params.id);
+  if (!file) return res.status(404).send("CV file not found");
+  res.send(renderCvViewPage(file));
 });
 
 app.post("/cv-library/:id/delete", (req, res) => {
