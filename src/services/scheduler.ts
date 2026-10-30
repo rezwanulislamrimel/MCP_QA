@@ -2,6 +2,8 @@ import cron from "node-cron";
 import { discoverJobs } from "./job-discovery.js";
 import { tailorApplication } from "./tailor.js";
 import { getProfile, getJobs, addAuditLog } from "../db/repositories.js";
+import { prepareEmailDraft, sendApplicationEmail } from "./email/sender.js";
+import { isGmailConnected } from "./email/gmail.js";
 import type { DiscoveryResult } from "./job-discovery.js";
 
 const DEFAULT_SCHEDULE = "0 9 * * *"; // Daily at 09:00
@@ -60,16 +62,38 @@ export async function runDailyDiscoveryAutomation(): Promise<DiscoveryResult> {
     const result = await discoverJobs(profile);
     lastAddedCount = result.added;
 
-    // For newly discovered jobs that strongly match (score >= 60),
-    // pre-generate tailored drafts so they are immediately waiting for candidate review
+    // For newly discovered jobs that match, tailor materials and auto-apply if configured
+    const autoApplyEnabled = process.env.AUTO_APPLY_ENABLED === "true";
+    const minMatchScore = profile.minimumMatchScore || 35;
+
     if (result.added > 0 && profile.cvText) {
-      const newJobs = getJobs({ status: "New Job", minScore: 60 });
-      for (const job of newJobs.slice(0, 5)) {
+      const newJobs = getJobs({ status: "New Job", minScore: minMatchScore });
+      for (const job of newJobs.slice(0, 10)) {
         try {
           await tailorApplication(job, profile);
-          console.log(`[scheduler] Pre-generated tailored draft for high-match job: ${job.title} at ${job.company}`);
+          console.log(`[scheduler] Prepared application draft for: ${job.title} at ${job.company}`);
+
+          // If Auto-Apply mode is enabled and an application email is present:
+          if (autoApplyEnabled && job.applicationEmail && isGmailConnected()) {
+            const draft = prepareEmailDraft(job, profile);
+            const sendResult = await sendApplicationEmail({
+              job,
+              provider: "gmail",
+              recipient: job.applicationEmail,
+              subject: draft.subject,
+              body: draft.body,
+              attachments: draft.suggestedAttachments,
+              approvedByUser: true
+            });
+
+            if (sendResult.success) {
+              console.log(`[scheduler] [AUTO-APPLY] Applied to ${job.title} at ${job.company} (${job.applicationEmail}) via Gmail!`);
+            } else {
+              console.warn(`[scheduler] [AUTO-APPLY] Failed to send email to ${job.applicationEmail}: ${sendResult.error}`);
+            }
+          }
         } catch (err) {
-          console.warn(`[scheduler] Could not pre-generate draft for job ${job.id}:`, err);
+          console.warn(`[scheduler] Could not process job ${job.id}:`, err);
         }
       }
     }

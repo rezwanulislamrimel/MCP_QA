@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { sendGmail } from "./gmail.js";
+import { sendGmail, isGmailConnected, getGmailAppPassword } from "./gmail.js";
 import { sendOutlook } from "./outlook.js";
 import {
   getEmailAccount,
+  getCVFiles,
   insertEmailLog,
   updateJob,
   getEmailLogsForJob,
@@ -58,22 +59,35 @@ ${profile.github ? `GitHub: ${profile.github}` : ""}
 
   const suggestedAttachments: Array<{ name: string; path: string; size: number; mimeType: string }> = [];
 
-  // Suggest tailored PDF CV if generated, else DOCX
-  if (job.tailoredCvPdfPath && fs.existsSync(job.tailoredCvPdfPath)) {
+  // Priority 1: Use candidate's actual uploaded CV file directly
+  const cvFiles = getCVFiles();
+  const activeCv = cvFiles.find(f => f.isActive) || cvFiles[0];
+  if (activeCv) {
+    const originalDiskPath = path.resolve("uploads", activeCv.filename);
+    if (fs.existsSync(originalDiskPath)) {
+      const stat = fs.statSync(originalDiskPath);
+      suggestedAttachments.push({
+        name: `Rezwanul_Rimel_CV.pdf`,
+        path: originalDiskPath,
+        size: stat.size,
+        mimeType: activeCv.mimeType || "application/pdf"
+      });
+    }
+  } else if (job.tailoredCvPdfPath && fs.existsSync(job.tailoredCvPdfPath)) {
     const stat = fs.statSync(job.tailoredCvPdfPath);
     suggestedAttachments.push({
-      name: `${applicantName.replace(/\s+/g, "_")}_CV_${job.company.replace(/\s+/g, "_")}.pdf`,
+      name: `Rezwanul_Rimel_CV.pdf`,
       path: job.tailoredCvPdfPath,
       size: stat.size,
       mimeType: "application/pdf"
     });
   }
 
-  // Suggest Cover Letter PDF if generated
+  // Priority 2: Attach Cover Letter PDF if generated
   if (job.coverLetterPdfPath && fs.existsSync(job.coverLetterPdfPath)) {
     const stat = fs.statSync(job.coverLetterPdfPath);
     suggestedAttachments.push({
-      name: `${applicantName.replace(/\s+/g, "_")}_CoverLetter_${job.company.replace(/\s+/g, "_")}.pdf`,
+      name: `Rezwanul_Rimel_CoverLetter_${job.company.replace(/[^a-zA-Z0-9_-]/g, "_")}.pdf`,
       path: job.coverLetterPdfPath,
       size: stat.size,
       mimeType: "application/pdf"
@@ -149,9 +163,18 @@ export async function sendApplicationEmail(
   }
 
   // 4. Check Account Connection
-  const account = getEmailAccount(provider);
-  if (!account || account.status !== "connected") {
-    throw new Error(`Your ${provider === "gmail" ? "Gmail" : "Outlook"} account is not connected. Please connect it first under Email Accounts.`);
+  let senderEmail = "rezwanul.rimel97@gmail.com";
+  if (provider === "gmail") {
+    if (!isGmailConnected()) {
+      throw new Error("Your Gmail account is not connected. Please connect it first under Email Accounts.");
+    }
+    senderEmail = getGmailAppPassword().email || "rezwanul.rimel97@gmail.com";
+  } else {
+    const account = getEmailAccount(provider);
+    if (!account || account.status !== "connected") {
+      throw new Error(`Your ${provider} account is not connected. Please connect it first under Email Accounts.`);
+    }
+    senderEmail = account.emailAddress;
   }
 
   // 5. Prevent Accidental Duplicate Sends
@@ -188,7 +211,7 @@ export async function sendApplicationEmail(
     insertEmailLog({
       jobId: job.id,
       provider,
-      senderEmail: account.emailAddress,
+      senderEmail,
       recipientEmail: recipient.trim(),
       subject: subject.trim(),
       body: body.trim(),
@@ -218,7 +241,7 @@ export async function sendApplicationEmail(
     insertEmailLog({
       jobId: job.id,
       provider,
-      senderEmail: account.emailAddress,
+      senderEmail,
       recipientEmail: recipient.trim(),
       subject: subject.trim(),
       body: body.trim(),

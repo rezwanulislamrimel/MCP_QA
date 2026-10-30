@@ -29,6 +29,9 @@ test("SQLite DB - profile update and retrieval persist in database", () => {
   const fetched = getProfile();
   assert.equal(fetched.fullName, testName);
   assert.equal(fetched.location, "Chittagong, Bangladesh");
+
+  // Restore current profile
+  updateProfile(current);
 });
 
 test("SQLite DB - job workflow state transitions update counts correctly", () => {

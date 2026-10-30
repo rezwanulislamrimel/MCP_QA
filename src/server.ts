@@ -29,7 +29,8 @@ import { initScheduler, getSchedulerStatus, runDailyDiscoveryAutomation } from "
 import {
   getGmailAuthUrl,
   handleGmailCallback,
-  disconnectGmail
+  disconnectGmail,
+  connectGmailAppPassword
 } from "./services/email/gmail.js";
 import {
   getOutlookAuthUrl,
@@ -431,6 +432,20 @@ app.get("/accounts", (req, res) => {
   const accounts = getAllEmailAccounts();
   const notice = req.query.notice ? String(req.query.notice) : undefined;
   res.send(renderEmailAccountsPage(accounts, notice));
+});
+
+app.post("/accounts/gmail-app-password", (req, res) => {
+  try {
+    const email = String(req.body.email || "rezwanul.rimel97@gmail.com").trim();
+    const appPassword = String(req.body.appPassword || "").trim();
+    if (!appPassword) throw new Error("Please enter your 16-character Google App Password.");
+
+    connectGmailAppPassword(email, appPassword);
+    res.redirect("/accounts?notice=Gmail+successfully+connected+via+Google+App+Password!");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    res.redirect(`/accounts?notice=${encodeURIComponent(msg)}`);
+  }
 });
 
 // Gmail OAuth routes

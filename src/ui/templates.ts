@@ -825,85 +825,64 @@ export function renderDraftsPage(draftJobs: Job[]): string {
 
 export function renderEmailAccountsPage(accounts: EmailAccount[], notice?: string): string {
   const gmail = accounts.find(a => a.provider === "gmail");
-  const outlook = accounts.find(a => a.provider === "outlook");
+  const isGmailActive = (gmail && gmail.status === "connected") || Boolean(process.env.GMAIL_APP_PASSWORD);
+  const activeEmail = gmail?.emailAddress || process.env.GMAIL_USER || "rezwanul.rimel97@gmail.com";
 
   return baseLayout("Email Accounts", `
     ${notice ? `<div class="alert alert-info"><span>${esc(notice)}</span></div>` : ""}
 
     <div class="card">
-      <div class="card-title">Official OAuth 2.0 Email Integrations</div>
+      <div class="card-title">Google Gmail Integration</div>
       <p class="muted" style="margin-bottom: 16px;">
-        Connect your Gmail or Microsoft Outlook account to send reviewed job applications.
-        <strong>Security Guarantee:</strong> Passwords are never requested or stored. OAuth tokens are encrypted with AES-256-GCM.
-        <strong>No email is ever sent automatically without your explicit approval click.</strong>
+        Connect your <strong>Google Gmail (${esc(activeEmail)})</strong> to automatically send reviewed QA job applications with your CV.
+        We provide <strong>two simple ways</strong> to connect your Gmail:
       </p>
-    </div>
 
-    <div class="grid-2">
-      <!-- Gmail Card -->
-      <div class="card">
+      <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-          <h3>Google Gmail</h3>
-          ${gmail && gmail.status === "connected"
-            ? `<span class="badge badge-success">Connected</span>`
-            : `<span class="badge badge-warning">Not Connected</span>`}
+          <h3>Method 1: Connect via Google App Password (Fastest &amp; Recommended)</h3>
+          ${isGmailActive ? `<span class="badge badge-success">Google Gmail Connected: ${esc(activeEmail)}</span>` : `<span class="badge badge-warning">Not Connected</span>`}
         </div>
-        <p class="muted" style="margin-bottom: 16px;">
-          Uses the official Gmail API (scopes: <code>gmail.send</code>, <code>userinfo.email</code>).
+        <p class="muted" style="margin-bottom: 14px;">
+          No complex Google Cloud Console setup required!
+          1. Go to <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">Google Account &gt; App Passwords ↗</a> (requires 2-Step Verification on your Google account).<br>
+          2. Enter "QA Job Agent" as the app name and generate a 16-letter password.<br>
+          3. Paste it below and click <strong>Connect Gmail</strong>:
         </p>
-        ${gmail && gmail.status === "connected" ? `
-          <div style="background: #f8fafc; padding: 14px; border-radius: 8px; margin-bottom: 16px;">
-            <div>Signed in as: <strong>${esc(gmail.emailAddress)}</strong></div>
-            <div class="muted" style="font-size: 12px; margin-top: 4px;">Connected at: ${new Date(gmail.lastConnectedAt || "").toLocaleString()}</div>
+        <form method="post" action="/accounts/gmail-app-password" style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+          <div style="flex: 1; min-width: 250px;">
+            <label>Your Gmail Address</label>
+            <input type="email" name="email" value="${esc(activeEmail)}" required>
           </div>
-          <form method="post" action="/oauth/gmail/disconnect">
-            <button class="btn btn-danger btn-sm" onclick="return confirm('Disconnect Gmail account?')">Disconnect Gmail</button>
-          </form>
-        ` : `
-          <a class="btn btn-primary" href="/oauth/gmail/connect">Connect Gmail with Google OAuth</a>
-        `}
+          <div style="flex: 1; min-width: 250px;">
+            <label>16-Character Google App Password</label>
+            <input type="password" name="appPassword" placeholder="abcd efgh ijkl mnop" required>
+          </div>
+          <button class="btn btn-primary" type="submit">Connect Gmail</button>
+        </form>
+        ${isGmailActive ? `
+          <div style="margin-top: 14px;">
+            <form method="post" action="/oauth/gmail/disconnect" style="display:inline">
+              <button class="btn btn-danger btn-sm" onclick="return confirm('Disconnect Gmail account?')">Disconnect Gmail</button>
+            </form>
+          </div>
+        ` : ""}
       </div>
 
-      <!-- Outlook Card -->
-      <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-          <h3>Microsoft Outlook</h3>
-          ${outlook && outlook.status === "connected"
-            ? `<span class="badge badge-success">Connected</span>`
-            : `<span class="badge badge-warning">Not Connected</span>`}
-        </div>
-        <p class="muted" style="margin-bottom: 16px;">
-          Uses Microsoft Graph API (scopes: <code>Mail.Send</code>, <code>User.Read</code>, <code>offline_access</code>).
+      <div style="background: #ffffff; border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+        <h3>Method 2: Connect via Google Cloud OAuth 2.0 (Optional)</h3>
+        <p class="muted" style="margin: 8px 0 14px;">
+          If you prefer official OAuth 2.0 with a Google Cloud Console Web Application Client ID:
         </p>
-        ${outlook && outlook.status === "connected" ? `
-          <div style="background: #f8fafc; padding: 14px; border-radius: 8px; margin-bottom: 16px;">
-            <div>Signed in as: <strong>${esc(outlook.emailAddress)}</strong></div>
-            <div class="muted" style="font-size: 12px; margin-top: 4px;">Connected at: ${new Date(outlook.lastConnectedAt || "").toLocaleString()}</div>
-          </div>
-          <form method="post" action="/oauth/outlook/disconnect">
-            <button class="btn btn-danger btn-sm" onclick="return confirm('Disconnect Outlook account?')">Disconnect Outlook</button>
-          </form>
-        ` : `
-          <a class="btn btn-primary" href="/oauth/outlook/connect">Connect Outlook with Microsoft OAuth</a>
-        `}
+        <a class="btn btn-secondary btn-sm" href="/oauth/gmail/connect">Connect with Google OAuth Screen ↗</a>
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-title">OAuth Configuration &amp; Credentials Setup</div>
-      <p class="muted" style="margin-bottom: 12px;">
-        To enable Google or Microsoft OAuth, configure your credentials in the project's <code>.env</code> file:
+    <div class="card" style="opacity: 0.85;">
+      <div class="card-title">Microsoft Outlook (Optional)</div>
+      <p class="muted">
+        Microsoft Outlook integration is supported via Microsoft Graph OAuth if ever needed.
       </p>
-      <pre># Google Cloud Console OAuth 2.0 Credentials:
-GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-GOOGLE_REDIRECT_URI=http://localhost:3030/oauth/gmail/callback
-
-# Microsoft Entra ID (Azure) App Registration Credentials:
-MICROSOFT_CLIENT_ID=your-microsoft-app-id
-MICROSOFT_CLIENT_SECRET=your-microsoft-client-secret
-MICROSOFT_TENANT_ID=common
-MICROSOFT_REDIRECT_URI=http://localhost:3030/oauth/outlook/callback</pre>
     </div>
   `, "accounts");
 }
@@ -974,23 +953,48 @@ export function renderHistoryPage(logs: EmailLog[], auditLogs: AuditLog[]): stri
 // ==================== SETTINGS PAGE ====================
 
 export function renderSettingsPage(schedulerStatus: any): string {
+  const isAutoApply = process.env.AUTO_APPLY_ENABLED === "true";
+
   return baseLayout("Settings & Automation", `
     <div class="card">
-      <div class="card-title">Daily Automation Status</div>
+      <div class="card-title">Direct Auto-Apply &amp; Discovery Automation</div>
       <p class="muted" style="margin-bottom: 16px;">
-        Scheduled to discover QA positions daily at <strong>09:00 Bangladesh time (Asia/Dhaka)</strong>.
-        Discovered jobs are scored, deduplicated, and prepared for your review.
-        <strong>Daily automation never sends an email without human approval.</strong>
+        Scheduled to discover QA positions in the background across Bangladesh and international remote markets.
       </p>
-      <div style="background: #f8fafc; padding: 18px; border-radius: 8px; margin-bottom: 18px;">
-        <div>Scheduler Status: <strong>${schedulerStatus.isActive ? "🟢 Active & Running" : "🔴 Inactive"}</strong></div>
+
+      <div style="background: ${isAutoApply ? "#ecfdf5" : "#eff6ff"}; border: 1px solid ${isAutoApply ? "#a7f3d0" : "#bfdbfe"}; padding: 18px; border-radius: 8px; margin-bottom: 18px;">
+        <div style="font-size: 16px; font-weight: 700; color: ${isAutoApply ? "#065f46" : "#1e40af"}; margin-bottom: 8px;">
+          Auto-Apply Mode: ${isAutoApply ? "🚀 ACTIVE (Direct Apply Enabled)" : "🛡️ MANUAL REVIEW (Direct Apply Disabled)"}
+        </div>
+        <p class="muted" style="color: ${isAutoApply ? "#047857" : "#1d4ed8"}; line-height: 1.5;">
+          ${isAutoApply
+            ? "When a matching QA job with an application email is discovered, the agent automatically crafts a targeted cover letter, attaches your authentic uploaded CV (Rezwanul Rimel), and sends the application directly via your Gmail!"
+            : "Discovered jobs and prepared application drafts wait in your dashboard for your explicit review and one-click approval."}
+        </p>
+      </div>
+
+      <div style="background: #f8fafc; border: 1px solid var(--border); padding: 18px; border-radius: 8px; margin-bottom: 18px;">
+        <div>Scheduler Status: <strong>${schedulerStatus.isActive ? "🟢 Active &amp; Running" : "🔴 Inactive"}</strong></div>
         <div style="margin-top: 6px;">Cron Schedule: <code>${esc(schedulerStatus.schedule)}</code> (${esc(schedulerStatus.timezone)})</div>
         <div style="margin-top: 6px;">Last Run: ${schedulerStatus.lastRunAt ? new Date(schedulerStatus.lastRunAt).toLocaleString() : "Not triggered yet today"}</div>
         <div style="margin-top: 6px;">Last Result: ${esc(schedulerStatus.lastResultSummary || "No runs yet")}</div>
       </div>
-      <form method="post" action="/discover">
-        <button class="btn btn-primary">Run Discovery Right Now</button>
-      </form>
+
+      <div style="display: flex; gap: 10px;">
+        <form method="post" action="/discover">
+          <button class="btn btn-primary">⚡ Run Discovery &amp; Auto-Apply Right Now</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Candidate Profile Consistency</div>
+      <div class="muted">
+        Candidate Name: <strong>Rezwanul Rimel</strong><br>
+        Email: <strong>rezwanul.rimel97@gmail.com</strong><br>
+        Attached File: <strong>Original Uploaded CV (Rezwanul_SQA_Engineer_1y.pdf)</strong><br>
+        Source of Truth: All experience, projects, tools, and education are strictly drawn from your CV.
+      </div>
     </div>
 
     <div class="card">

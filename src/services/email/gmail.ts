@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import nodemailer from "nodemailer";
 import { encryptText, decryptText, generateSecureState } from "../crypto.js";
 import {
   saveEmailAccount,
@@ -20,6 +21,51 @@ export const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
   "https://www.googleapis.com/auth/userinfo.email"
 ];
+
+export function getGmailAppPassword(): { email: string; appPassword?: string } {
+  const envEmail = process.env.GMAIL_USER?.trim() || "rezwanul.rimel97@gmail.com";
+  const envPass = process.env.GMAIL_APP_PASSWORD?.trim();
+  if (envPass) {
+    return { email: envEmail, appPassword: envPass.replace(/\s+/g, "") };
+  }
+
+  const account = getEmailAccount("gmail");
+  if (account && account.encryptedTokens) {
+    try {
+      const decrypted = JSON.parse(decryptText(account.encryptedTokens));
+      if (decrypted.authType === "app_password" && decrypted.appPassword) {
+        return { email: account.emailAddress, appPassword: decrypted.appPassword.replace(/\s+/g, "") };
+      }
+    } catch {}
+  }
+
+  return { email: envEmail };
+}
+
+export function isGmailConnected(): boolean {
+  const { appPassword } = getGmailAppPassword();
+  if (appPassword) return true;
+  const account = getEmailAccount("gmail");
+  return Boolean(account && account.status === "connected");
+}
+
+export function connectGmailAppPassword(email: string, appPassword: string): void {
+  const cleanPass = appPassword.trim().replace(/\s+/g, "");
+  if (!cleanPass) throw new Error("Please enter a valid 16-character Gmail App Password.");
+
+  saveEmailAccount({
+    id: "gmail",
+    provider: "gmail",
+    emailAddress: email.trim(),
+    displayName: `Gmail (${email.trim()}) [App Password]`,
+    encryptedTokens: encryptText(JSON.stringify({
+      authType: "app_password",
+      appPassword: cleanPass
+    })),
+    status: "connected",
+    lastConnectedAt: new Date().toISOString()
+  });
+}
 
 function getGmailCredentials() {
   const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
@@ -183,11 +229,43 @@ export interface SendMailOptions {
 }
 
 /**
- * Sends an email via official Gmail API using RFC 2822 MIME format.
+ * Sends an email via Gmail using either App Password (direct SMTP) or official OAuth 2.0 API.
  */
 export async function sendGmail(options: SendMailOptions): Promise<{ messageId: string }> {
+  const { email: senderEmail, appPassword } = getGmailAppPassword();
+
+  // 1. If App Password is configured, send via secure SMTP
+  if (appPassword) {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: senderEmail,
+        pass: appPassword
+      }
+    });
+
+    const formattedAttachments = (options.attachments || []).map(att => ({
+      filename: att.name,
+      path: att.path,
+      contentType: att.mimeType
+    }));
+
+    const info = await transporter.sendMail({
+      from: `"Rezwanul Rimel" <${senderEmail}>`,
+      to: options.to,
+      subject: options.subject,
+      text: options.body,
+      attachments: formattedAttachments
+    });
+
+    return { messageId: info.messageId || `smtp_${Date.now()}` };
+  }
+
+  // 2. Otherwise use official Google OAuth 2.0 API
   const account = getEmailAccount("gmail");
-  if (!account) throw new Error("Gmail account not found.");
+  if (!account || account.status !== "connected") {
+    throw new Error("Gmail is not connected. Connect via Gmail App Password or Google OAuth.");
+  }
 
   const accessToken = await getValidGmailAccessToken();
   const boundary = `====boundary_${crypto.randomBytes(12).toString("hex")}====`;
